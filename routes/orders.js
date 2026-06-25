@@ -19,14 +19,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ 
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Hanya file gambar yang diizinkan'), false);
-    }
-  }
+  storage: storage
 });
 
 const router = express.Router();

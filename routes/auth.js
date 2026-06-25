@@ -58,6 +58,53 @@ router.post('/register', async (req, res) => {
   }
 });
 
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE');
+
+router.post('/google', async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ message: 'Token Google tidak ditemukan' });
+  }
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE',
+    });
+    const payload = ticket.getPayload();
+    const { email, name, picture } = payload;
+
+    let user = await User.findOne({ where: { email } });
+
+    if (!user) {
+      user = await User.create({
+        name,
+        email,
+        password: null,
+        role: 'customer',
+        profilePicture: picture || null
+      });
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        profilePicture: user.profilePicture
+      }
+    });
+  } catch (error) {
+    console.error('Google Auth Error:', error);
+    res.status(401).json({ message: 'Token Google tidak valid', error: error.message });
+  }
+});
+
 const multer = require('multer');
 const path = require('path');
 const authMiddleware = require('../middleware/auth');
@@ -72,15 +119,8 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Hanya file gambar yang diizinkan'), false);
-    }
-  }
+const upload = multer({
+  storage: storage
 });
 
 router.put('/profile', authMiddleware, upload.single('profilePicture'), async (req, res) => {
@@ -104,7 +144,7 @@ router.put('/profile', authMiddleware, upload.single('profilePicture'), async (r
 
     user.name = name;
     user.email = email;
-    
+
     if (req.file) {
       user.profilePicture = `/uploads/${req.file.filename}`;
     }
